@@ -13,8 +13,10 @@ datasource db {
 }
 
 model User {
-  id           String    @id // Matches Clerk user_id
-  email        String    @unique
+  id        String    @id // Matches Clerk user_id
+  name      String 
+  email     String    @unique
+  password  String
   flag_count   Int       @default(0)
   banned_until DateTime? @db.Timestamptz
   created_at   DateTime  @default(now()) @db.Timestamptz
