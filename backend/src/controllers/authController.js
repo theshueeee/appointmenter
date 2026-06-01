@@ -1,4 +1,4 @@
-import { prisma } from "../config/db.js";
+import  prisma  from "../config/db.js";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../utils/generateToken.js";
 
