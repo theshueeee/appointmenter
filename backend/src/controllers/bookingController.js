@@ -276,9 +276,8 @@ const deleteBooking = async (req, res) => {
 
         // Instead of hard-deleting the row, it is better for history to mark it as CANCELLED.
         // If you strictly want to delete the row, change this to prisma.booking.delete(...)
-        await prisma.booking.update({
+        await prisma.booking.delete({
             where: { id: bookingId },
-            data: { status: "CANCELLED" }
         });
 
         res.status(200).json({
