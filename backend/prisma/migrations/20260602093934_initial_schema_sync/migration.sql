@@ -6,10 +6,14 @@ CREATE TYPE "BookingStatus" AS ENUM ('ACTIVE', 'COMPLETED', 'CANCELLED');
 
 -- CreateTable
 CREATE TABLE "User" (
-    "id" TEXT NOT NULL,
+    "id" UUID NOT NULL,
+    "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
+    "password" TEXT NOT NULL,
     "flag_count" INTEGER NOT NULL DEFAULT 0,
     "banned_until" TIMESTAMPTZ,
+    "reschedule_count" INTEGER NOT NULL DEFAULT 0,
+    "last_reschedule_date" TIMESTAMPTZ,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
@@ -28,7 +32,7 @@ CREATE TABLE "MeetingRoom" (
 -- CreateTable
 CREATE TABLE "Booking" (
     "id" UUID NOT NULL,
-    "user_id" TEXT,
+    "user_id" UUID NOT NULL,
     "meetingroom_id" UUID NOT NULL,
     "start_time" TIMESTAMPTZ NOT NULL,
     "end_time" TIMESTAMPTZ NOT NULL,
@@ -44,7 +48,7 @@ CREATE TABLE "Booking" (
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- AddForeignKey
-ALTER TABLE "Booking" ADD CONSTRAINT "Booking_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Booking" ADD CONSTRAINT "Booking_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Booking" ADD CONSTRAINT "Booking_meetingroom_id_fkey" FOREIGN KEY ("meetingroom_id") REFERENCES "MeetingRoom"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

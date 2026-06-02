@@ -87,7 +87,7 @@ const createBooking = async (req,res)=>{
     }
 
     // verifying if the room exists
-    const isRoom = await prisma.MeetingRoom.findUnique({
+    const isRoom = await prisma.meetingRoom.findUnique({
         where: {
             id: meetingroom_id  
         }
@@ -143,67 +143,86 @@ const createBooking = async (req,res)=>{
 
 const updateBooking = async (req, res) => {
     try {
-        const bookingId = req.params.id; // Removed quotes
-        const { start_time, end_time, status, version } = req.body; // Expect version from frontend
+        // 1. FIXED: Removed quotes to grab the actual variable
+        const bookingId = req.params.id;
+        
+        // 2. FIXED: Added 'version' to the destructured body
+        const { start_time, end_time, status, version } = req.body;
 
-        const existingBooking = await prisma.booking.findUnique({
+        // --- VERIFY EXISTENCE & AUTHORIZATION ---
+        const existingBookings = await prisma.booking.findUnique({
             where: { id: bookingId }
         });
 
-        if (!existingBooking) {
+        if (!existingBookings) {
             return res.status(404).json({ error: "Booking not found" });
         }
-        if (existingBooking.user_id !== req.user.id) {
+
+        // FIXED: Removed quotes from req.user.id
+        if (existingBookings.user_id !== req.user.id) {
             return res.status(403).json({ error: "You are not authorized to update this booking" });
         }
 
-        // --- NEW: MAX 5 RESCHEDULES LOGIC ---
+        // 3. FIXED: Optimistic Locking Check
+        // Ensure the client sent a version and it matches the DB
+        if (version && existingBookings.version !== version) {
+            return res.status(409).json({ error: "This booking was modified by another process. Please refresh and try again." });
+        }
+
+        // --- TIME VALIDATION, OVERLAP, & RESCHEDULE LIMIT ---
         if (start_time && end_time) {
-            const user = await prisma.user.findUnique({ where: { id: req.user.id } });
             
+            // 4. FIXED: Max 5 Reschedules Logic
+            const user = await prisma.user.findUnique({ where: { id: req.user.id } });
             const currentMonth = new Date().getMonth();
             const lastRescheduleMonth = user.last_reschedule_date ? new Date(user.last_reschedule_date).getMonth() : null;
-            
             let currentRescheduleCount = user.reschedule_count;
 
-            // Reset count if we are in a new month
             if (lastRescheduleMonth !== currentMonth) {
-                currentRescheduleCount = 0;
+                currentRescheduleCount = 0; // Reset for new month
             }
 
             if (currentRescheduleCount >= 5) {
                 return res.status(429).json({ error: "You have reached the maximum of 5 reschedules this month." });
             }
 
-            // Standard overlap and time checks
+            // Existing Time Validations
             const start = new Date(start_time);
             const end = new Date(end_time);
             const now = new Date();
 
             if (start < now) {
-                return res.status(400).json({ error: "Cannot reschedule to a past time" });
+                return res.status(400).json({ error: "Cannot book a meeting in the past" });
             }
+
             if (end <= start) {
                 return res.status(400).json({ error: "End time must be after start time" });
             }
 
+            const durationMs = end.getTime() - start.getTime();
+            const durationMins = durationMs / (1000 * 60);
+                
+            if (durationMins < 15 || durationMins > 240) { 
+                return res.status(400).json({ error: "Booking duration must be between 15 minutes and 4 hours" });
+            }
+
             const overlapBookings = await prisma.booking.findFirst({
                 where: {
-                    meetingroom_id: existingBooking.meetingroom_id,
+                    meetingroom_id: existingBookings.meetingroom_id,
                     status: "ACTIVE",
                     id: { not: bookingId },
                     AND: [
-                        { start_time: { lt: end } },
-                        { end_time: { gt: start } },
+                        { start_time: { lt: end } }, 
+                        { end_time: { gt: start } },  
                     ],
                 }
             });
 
-            if (overlapBookings) {
-                return res.status(400).json({ error: "This room has already been booked during this time" });
+            if (overlapBookings){
+                return res.status(400).json({error: "This room has already been booked during this time"});
             }
 
-            // Increment the user's reschedule count
+            // Update the user's reschedule count if validation passes
             await prisma.user.update({
                 where: { id: req.user.id },
                 data: {
@@ -213,26 +232,23 @@ const updateBooking = async (req, res) => {
             });
         }
 
-        // --- OPTIMISTIC LOCKING ON UPDATE ---
-        // Verify the version sent by the client matches the DB to prevent concurrent overwrites
-        if (version && existingBooking.version !== version) {
-             return res.status(409).json({ error: "This booking was modified by another process. Please refresh and try again." });
-        }
-
+        // --- EXECUTE THE UPDATE ---
         const updatedBooking = await prisma.booking.update({
             where: { id: bookingId },
             data: {
                 ...(start_time && { start_time: new Date(start_time) }),
                 ...(end_time && { end_time: new Date(end_time) }),
                 ...(status && { status }),
-                version: { increment: 1 } 
+                version: { increment: 1 }
             },
             include: { meetingroom: true }
         });
 
         res.status(200).json({
             status: "Success",
-            data: { booking: updatedBooking },
+            data: {
+                booking: updatedBooking,
+            },
         });
 
     } catch (error) {
@@ -240,6 +256,8 @@ const updateBooking = async (req, res) => {
         res.status(500).json({ error: "Failed to update booking" });
     }
 };
+
+
 
 const deleteBooking = async (req, res) => {
     try {

@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,21 +7,21 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(uuid())
-  name      String 
-  email     String    @unique
-  password  String
-  flag_count   Int       @default(0)
-  banned_until DateTime? @db.Timestamptz
-  reschedule_count Int 
-  last_reschedule_data DateTime? @db.Timestamptz
-  created_at   DateTime  @default(now()) @db.Timestamptz
+  id                   String    @id @default(uuid()) @db.Uuid
+  name                 String 
+  email                String    @unique
+  password             String
+  flag_count           Int       @default(0)
+  banned_until         DateTime? @db.Timestamptz
+  reschedule_count     Int       @default(0)
+  last_reschedule_date DateTime? @db.Timestamptz // FIXED: changed 'data' to 'date'
+  created_at           DateTime  @default(now()) @db.Timestamptz
 
   bookings Booking[]
 }
 
 model MeetingRoom {
-  id       String         @id @default(uuid()) 
+  id       String            @id @default(uuid()) @db.Uuid
   name     String
   location String
   status   MeetingRoomStatus @default(AVAILABLE)
@@ -35,18 +30,19 @@ model MeetingRoom {
 }
 
 model Booking {
-  id          String        @id @default(uuid())
-  user_id     String?       // Optional because of SET NULL
+  id             String        @id @default(uuid()) @db.Uuid
+  user_id        String        @db.Uuid 
   meetingroom_id String        @db.Uuid
-  start_time  DateTime      @db.Timestamptz
-  end_time    DateTime      @db.Timestamptz
-  status      BookingStatus @default(ACTIVE)
-  version     Int           @default(1)
-  created_at  DateTime      @default(now()) @db.Timestamptz
-  updated_at  DateTime      @updatedAt @db.Timestamptz
+  start_time     DateTime      @db.Timestamptz
+  end_time       DateTime      @db.Timestamptz
+  status         BookingStatus @default(ACTIVE)
+  version        Int           @default(1)
+  created_at     DateTime      @default(now()) @db.Timestamptz
+  updated_at     DateTime      @updatedAt @db.Timestamptz
 
-  user     User?    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  meetingroom MeetingRoom @relation(fields: [meetingroom_id], references: [id], onDelete: Restrict)
+  // Cascade delete handles user deletion perfectly
+  user           User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  meetingroom    MeetingRoom   @relation(fields: [meetingroom_id], references: [id], onDelete: Restrict)
 }
 
 enum MeetingRoomStatus {
