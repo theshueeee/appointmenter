@@ -144,7 +144,7 @@ const createBooking = async (req,res)=>{
 const updateBooking = async (req, res) => {
     try {
         // 1. FIXED: Removed quotes to grab the actual variable
-        const bookingId = req.params.id;
+        const bookingId = req.query.id;
         
         // 2. FIXED: Added 'version' to the destructured body
         const { start_time, end_time, status, version } = req.body;
@@ -261,7 +261,7 @@ const updateBooking = async (req, res) => {
 
 const deleteBooking = async (req, res) => {
     try {
-        const bookingId = req.params.id; // Get ID from URL parameter
+        const bookingId = req.query.id; // Get ID from URL parameter
         const now = new Date();
 
         const booking = await prisma.booking.findUnique({

@@ -1,7 +1,12 @@
-<script setup></script>
+<script setup>
+import Navbar from "@/components/Navbar.vue";
+</script>
 
 <template>
-  <h1>You did it!</h1>
+  <div class="min-h-screen bg-stone-50">
+    <Navbar />
+    <router-view />
+  </div>
 </template>
 
 <style scoped></style>
