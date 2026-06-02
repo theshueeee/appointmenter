@@ -4,6 +4,7 @@ import { useBookingStore } from '@/stores/bookingStore';
 import { useAuthStore } from '@/stores/authStore';
 import { storeToRefs } from 'pinia';
 import { useRouter, useRoute } from 'vue-router';
+import TimePicker from '@/components/TimePicker.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -147,26 +148,18 @@ const cancelEdit = () => {
         </div>
 
         <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-medium text-stone-700 uppercase tracking-wider mb-1.5" for="startTime">Start</label>
-            <input
-              id="startTime"
-              v-model="startTime"
-              type="time"
-              required
-              class="w-full px-3 py-2 border-2 border-stone-300 text-sm focus:outline-none focus:border-stone-800 transition-colors"
-            />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-stone-700 uppercase tracking-wider mb-1.5" for="endTime">End</label>
-            <input
-              id="endTime"
-              v-model="endTime"
-              type="time"
-              required
-              class="w-full px-3 py-2 border-2 border-stone-300 text-sm focus:outline-none focus:border-stone-800 transition-colors"
-            />
-          </div>
+          <TimePicker
+            v-model="startTime"
+            label="Start"
+            id="startTime"
+            :required="true"
+          />
+          <TimePicker
+            v-model="endTime"
+            label="End"
+            id="endTime"
+            :required="true"
+          />
         </div>
 
         <div class="border-2 border-amber-400 bg-amber-50 p-4">
