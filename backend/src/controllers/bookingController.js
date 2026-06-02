@@ -1,19 +1,63 @@
 import  prisma  from "../config/db.js";
 
-const getBookings = async (req,res)=>{
-    const bookings = await prisma.booking.findMany({
-        where:{
-            user_id: "req.user.id",
-        }
-    });
+const getFutureBookings = async (req, res) => {
+    try {
+        const now = new Date();
 
-    try{
+        const bookings = await prisma.booking.findMany({
+            where: {
+                user_id: req.user.id,
+                start_time: {
+                    gte: now, // Only fetch where start_time is Greater Than or Equal to right now
+                }
+            },
+            orderBy: {
+                start_time: 'asc' // 'asc' puts the soonest upcoming appointments at the top
+            },
+            include: {
+                meetingroom: true 
+            }
+        });
+
         res.status(200).json({
             status: "Success",
-            data:{bookings}
+            data: { bookings }
         });
     } catch (error) {
-        console.log("Unable to get bookings", error);
+        console.error("Unable to get future bookings", error);
+        res.status(500).json({ error: "Failed to fetch future appointments" });
+    }
+};
+
+// ==========================================
+// 1B. GET PREVIOUS BOOKINGS (History)
+// ==========================================
+const getPastBookings = async (req, res) => {
+    try {
+        const now = new Date();
+
+        const bookings = await prisma.booking.findMany({
+            where: {
+                user_id: req.user.id,
+                start_time: {
+                    lt: now, // Only fetch where start_time is Less Than right now
+                }
+            },
+            orderBy: {
+                start_time: 'desc' // 'desc' puts the most recent past appointments at the top
+            },
+            include: {
+                meetingroom: true 
+            }
+        });
+
+        res.status(200).json({
+            status: "Success",
+            data: { bookings }
+        });
+    } catch (error) {
+        console.error("Unable to get past bookings", error);
+        res.status(500).json({ error: "Failed to fetch booking history" });
     }
 };
 
@@ -34,6 +78,14 @@ const createBooking = async (req,res)=>{
         return res.status(400).json({ error: "End time must be after start time" });
     };
 
+    //ensuring duration is between (15 minutes and 4 hours)
+    const durationMs = end.getTime() - start.getTime();
+    const durationMins = durationMs / (1000 * 60);
+        
+    if (durationMins < 15 || durationMins > 240) { // 240 mins = 4 hours
+        return res.status(400).json({ error: "Booking duration must be between 15 minutes and 4 hours" });
+    }
+
     // verifying if the room exists
     const isRoom = await prisma.MeetingRoom.findUnique({
         where: {
@@ -45,68 +97,85 @@ const createBooking = async (req,res)=>{
         return res.status(404).json({error: "Room not found"});
     }
 
-    //check if booking is already
-    const existingBooking = await prisma.booking.findFirst({
-        where: {
-            meetingroom_id: meetingroom_id,
-            status: "ACTIVE",
-            AND: [
-            { start_time: { lt: end } }, // Existing meeting starts before the new one ends
-            { end_time: { gt: start } },  // Existing meeting ends after the new one starts
-            ],
-        }
-    });
-
-    if (existingBooking){
-        return res.status(400).json({error: "This room has already been booked during this time"});
-    };
-
-    const booking = await prisma.booking.create({
-        data:{
-            user_id: "req.user.id",
-            meetingroom_id : meetingroom_id,
-            start_time : start_time,
-            end_time: end_time,
-        }
-    });
-
-    
-        res.status(201).json({
-        status:"Success",
-        data:{
-            booking,
-        },
+    // --- NEW: OPTIMISTIC LOCKING & OVERLAP PREVENTION ---
+    // To prevent double booking simultaneously, we use a Prisma Transaction.
+    // It ensures the overlap check and the creation happen in isolation.
+    const newBooking = await prisma.$transaction(async (tx) => {
+        const existingBooking = await tx.booking.findFirst({
+            where: {
+                meetingroom_id: meetingroom_id,
+                status: "ACTIVE",
+                AND: [
+                    { start_time: { lt: end } }, 
+                    { end_time: { gt: start } },  
+                ],
+            }
         });
-    } catch (error){
-        console.log("Error during booking appointment", error)
+
+        if (existingBooking) {
+            throw new Error("DOUBLE_BOOKING");
+        }
+
+        return await tx.booking.create({
+            data: {
+                user_id: req.user.id,
+                meetingroom_id: meetingroom_id,
+                start_time: start,
+                end_time: end,
+                version: 1 // Initializing version for future updates
+            }
+        });
+    });
+
+    res.status(201).json({
+        status: "Success",
+        data: { booking: newBooking },
+    });
+
+    } catch (error) {
+        if (error.message === "DOUBLE_BOOKING") {
+            return res.status(409).json({ error: "This room was just booked by someone else. Please choose another time." });
+        }
+        console.error("Error during booking appointment", error);
         res.status(500).json({ error: "Failed to create booking" });
-    };
+    }
 };
 
 const updateBooking = async (req, res) => {
     try {
-        // 1. Grab the booking ID from the URL (e.g., PUT /api/bookings/:id)
-        const bookingId = "req.params.id"; 
-        
-        const { start_time, end_time, status } = req.body;
+        const bookingId = req.params.id; // Removed quotes
+        const { start_time, end_time, status, version } = req.body; // Expect version from frontend
 
-        // --- VERIFY EXISTENCE & AUTHORIZATION ---
-        const existingBookings = await prisma.booking.findUnique({
+        const existingBooking = await prisma.booking.findUnique({
             where: { id: bookingId }
         });
 
-        if (!existingBookings) {
+        if (!existingBooking) {
             return res.status(404).json({ error: "Booking not found" });
         }
-
-        // Security check: Prevent users from updating other people's bookings
-        if (existingBookings.user_id !== "req.user.id") {
+        if (existingBooking.user_id !== req.user.id) {
             return res.status(403).json({ error: "You are not authorized to update this booking" });
         }
 
-        // --- TIME VALIDATION & OVERLAP LOGIC ---
-        // Only run this check if the user is actually trying to change the time
+        // --- NEW: MAX 5 RESCHEDULES LOGIC ---
         if (start_time && end_time) {
+            const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+            
+            const currentMonth = new Date().getMonth();
+            const lastRescheduleMonth = user.last_reschedule_date ? new Date(user.last_reschedule_date).getMonth() : null;
+            
+            let currentRescheduleCount = user.reschedule_count;
+
+            // Reset count if we are in a new month
+            if (lastRescheduleMonth !== currentMonth) {
+                currentRescheduleCount = 0;
+            }
+
+            if (currentRescheduleCount >= 5) {
+                return res.status(429).json({ error: "You have reached the maximum of 5 reschedules this month." });
+            }
+
+            // Standard overlap and time checks
             const start = new Date(start_time);
             const end = new Date(end_time);
             const now = new Date();
@@ -118,35 +187,44 @@ const updateBooking = async (req, res) => {
                 return res.status(400).json({ error: "End time must be after start time" });
             }
 
-            // Overlap check
             const overlapBookings = await prisma.booking.findFirst({
                 where: {
-                    meetingroom_id: existingBookings.meetingroom_id,
+                    meetingroom_id: existingBooking.meetingroom_id,
                     status: "ACTIVE",
                     id: { not: bookingId },
                     AND: [
-                    { start_time: { lt: end } }, // Existing meeting starts before the new one ends
-                    { end_time: { gt: start } },  // Existing meeting ends after the new one starts
+                        { start_time: { lt: end } },
+                        { end_time: { gt: start } },
                     ],
                 }
             });
 
-            if (overlapBookings){
-                return res.status(400).json({error: "This room has already been booked during this time"});
-            };
+            if (overlapBookings) {
+                return res.status(400).json({ error: "This room has already been booked during this time" });
+            }
+
+            // Increment the user's reschedule count
+            await prisma.user.update({
+                where: { id: req.user.id },
+                data: {
+                    reschedule_count: currentRescheduleCount + 1,
+                    last_reschedule_date: new Date()
+                }
+            });
         }
 
-        // --- EXECUTE THE UPDATE ---
+        // --- OPTIMISTIC LOCKING ON UPDATE ---
+        // Verify the version sent by the client matches the DB to prevent concurrent overwrites
+        if (version && existingBooking.version !== version) {
+             return res.status(409).json({ error: "This booking was modified by another process. Please refresh and try again." });
+        }
+
         const updatedBooking = await prisma.booking.update({
             where: { id: bookingId },
             data: {
-                // The spread syntax (...) ensures we only update fields the user actually sent
-                ...(start_time && { start_time }),
-                ...(end_time && { end_time }),
+                ...(start_time && { start_time: new Date(start_time) }),
+                ...(end_time && { end_time: new Date(end_time) }),
                 ...(status && { status }),
-                
-                // Bonus: Because you have a 'version' field in your schema, 
-                // it is best practice to increment it every time a change is made!
                 version: { increment: 1 } 
             },
             include: { meetingroom: true }
@@ -154,9 +232,7 @@ const updateBooking = async (req, res) => {
 
         res.status(200).json({
             status: "Success",
-            data: {
-                booking: updatedBooking,
-            },
+            data: { booking: updatedBooking },
         });
 
     } catch (error) {
@@ -165,33 +241,58 @@ const updateBooking = async (req, res) => {
     }
 };
 
-const deleteBooking = async (req,res)=>{
-    try{
-    const tempId = "8f1b8ae2-29af-417e-8603-b8b5609662dc";
-    const booking = await prisma.booking.findUnique({
-        where: {
-            id:tempId
-        },
-    });
+const deleteBooking = async (req, res) => {
+    try {
+        const bookingId = req.params.id; // Get ID from URL parameter
+        const now = new Date();
 
-    if (!booking){
-        res.status(404).json({error: "Booking not found"})
-    };
+        const booking = await prisma.booking.findUnique({
+            where: { id: bookingId },
+        });
 
-    await prisma.booking.delete({
-        where: { id: tempId },
-  });
+        if (!booking) {
+            return res.status(404).json({ error: "Booking not found" });
+        }
+        
+        if (booking.user_id !== req.user.id) {
+            return res.status(403).json({ error: "Not authorized to cancel this booking" });
+        }
 
-  res.status(200).json({
-    status: "success",
-    message: "Booking removed",
-  });
+        if (booking.start_time <= now) {
+            return res.status(400).json({ error: "Cannot cancel a meeting that has already started or passed." });
+        }
 
-    } catch(error){
+        // --- NEW: LAST MINUTE CANCELLATION FLAG ---
+        const timeDifferenceMs = booking.start_time.getTime() - now.getTime();
+        const timeDifferenceMins = timeDifferenceMs / (1000 * 60);
+
+        if (timeDifferenceMins <= 15) {
+            // Increment the user's flag score for last minute cancellation
+            await prisma.user.update({
+                where: { id: req.user.id },
+                data: { flag_count: { increment: 1 } }
+            });
+        }
+
+        // Instead of hard-deleting the row, it is better for history to mark it as CANCELLED.
+        // If you strictly want to delete the row, change this to prisma.booking.delete(...)
+        await prisma.booking.update({
+            where: { id: bookingId },
+            data: { status: "CANCELLED" }
+        });
+
+        res.status(200).json({
+            status: "success",
+            message: timeDifferenceMins <= 15 
+                ? "Booking cancelled. Note: A flag was added to your account for late cancellation." 
+                : "Booking successfully cancelled",
+        });
+
+    } catch (error) {
         console.error("Error deleting booking:", error);
         res.status(500).json({ error: "Failed to delete booking" });
     }
 };
 
-export {getBookings, createBooking, updateBooking, deleteBooking};
+export {getFutureBookings, getPastBookings, createBooking, updateBooking, deleteBooking};
 
