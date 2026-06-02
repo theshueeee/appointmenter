@@ -28,11 +28,6 @@ This project goes beyond basic CRUD functionality by implementing concurrency co
 * Read-only history for completed or cancelled bookings
 * Automatic locking of expired appointments
 
-## Account Management
-
-* Permanent account deletion
-* Automatic cleanup of future bookings after account deletion
-
 ---
 
 # 🧠 Architecture & Problem Solving
