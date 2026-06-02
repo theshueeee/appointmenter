@@ -3,7 +3,8 @@ import cors from "cors";
 import "dotenv/config"; 
 import { connectDB, disconnectDB } from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
-import bookingRoutes from "./routes/bookingRoutes.js"
+import bookingRoutes from "./routes/bookingRoutes.js";
+import meetingroomRoutes from "./routes/meetingroomRoutes.js";
 
 const app = express();
 const PORT = 5000;
@@ -18,6 +19,7 @@ app.use(express.json());
 // 3. Define API Routes
 app.use("/auth", authRoutes);
 app.use("/bookings", bookingRoutes);
+app.use("/meetingrooms", meetingroomRoutes)
 
 // 4. Start Server (Save server instance to a variable for graceful shutdown)
 const server = app.listen(PORT, () => {
