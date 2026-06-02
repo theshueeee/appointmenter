@@ -18,13 +18,15 @@ model User {
   password  String
   flag_count   Int       @default(0)
   banned_until DateTime? @db.Timestamptz
+  reschedule_count Int 
+  last_reschedule_data DateTime? @db.Timestamptz
   created_at   DateTime  @default(now()) @db.Timestamptz
 
   bookings Booking[]
 }
 
 model MeetingRoom {
-  id       String         @id @default(uuid()) @db.Uuid
+  id       String         @id @default(uuid()) 
   name     String
   location String
   status   MeetingRoomStatus @default(AVAILABLE)
@@ -33,7 +35,7 @@ model MeetingRoom {
 }
 
 model Booking {
-  id          String        @id @default(uuid()) @db.Uuid
+  id          String        @id @default(uuid())
   user_id     String?       // Optional because of SET NULL
   meetingroom_id String        @db.Uuid
   start_time  DateTime      @db.Timestamptz
@@ -43,7 +45,7 @@ model Booking {
   created_at  DateTime      @default(now()) @db.Timestamptz
   updated_at  DateTime      @updatedAt @db.Timestamptz
 
-  user     User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  user     User?    @relation(fields: [user_id], references: [id], onDelete: Cascade)
   meetingroom MeetingRoom @relation(fields: [meetingroom_id], references: [id], onDelete: Restrict)
 }
 

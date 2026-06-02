@@ -94,5 +94,29 @@ const logout = async (req, res) => {
   });
 };
 
+// delete account
+const deleteAccount = async (req, res) => {
+  // Extract user ID from the request (populated by your auth middleware)
+  const userId = req.user.id;
 
-export {register, login, logout};
+  // Delete the user
+  // (Because of onDelete: Cascade in your schema, this automatically deletes their bookings)
+  await prisma.user.delete({
+    where: { 
+      id: userId 
+    },
+  });
+
+  // Clear the JWT cookie since the account no longer exists
+  res.cookie("jwt", "", {
+    httpOnly: true,
+    expires: new Date(0),
+  });
+
+  res.status(200).json({
+    status: "success",
+    message: "Account and all associated data successfully deleted",
+  });
+};
+
+export { register, login, logout, deleteAccount };
