@@ -4,7 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router';
 
 const route = useRoute();
 const router = useRouter();
-const API_URL = 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const token = route.params.token;
 const password = ref('');
@@ -33,7 +33,7 @@ const handleSubmit = async () => {
 
   loading.value = true;
   try {
-    const res = await fetch(`${API_URL}/auth/reset-password/${token}`, {
+    const res = await fetch(`${API_URL}/auth/reset-password/${encodeURIComponent(token)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: password.value }),

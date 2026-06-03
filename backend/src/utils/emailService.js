@@ -3,8 +3,8 @@ import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const sendPasswordResetEmail = async (email, resetToken) => {
-  const frontendUrl = process.env.FRONTEND_URL || `http://localhost:${process.env.FRONTEND_PORT || 3002}`;
-  const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
+  const frontendUrl = process.env.FRONTEND_URL || `http://localhost:${process.env.FRONTEND_PORT || 3000}`;
+  const resetUrl = `${frontendUrl}/reset-password/${encodeURIComponent(resetToken)}`;
 
   const { data, error } = await resend.emails.send({
     from: `Appointmenter <${process.env.RESEND_FROM_EMAIL}>`,
